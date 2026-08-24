@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Quality Monitoring in Snowflake</title>
+<style>
+  :root{
+    --bg:#0a1120;
+    --bg2:#0f1b33;
+    --card:#14203a;
+    --card2:#1a2b4d;
+    --line:#2a3f66;
+    --blue:#29b5e8;      /* snowflake blue */
+    --blue2:#3ba9f0;
+    --cyan:#63e6ff;
+    --green:#3ddc97;
+    --amber:#ffb454;
+    --red:#ff6b6b;
+    --text:#eaf2ff;
+    --muted:#9fb3d1;
+    --shadow:0 20px 60px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 800px at 20% -10%,#16294d 0%,var(--bg) 55%);
+    color:var(--text);
+    overflow:hidden;
+  }
+
+  /* ---------- deck / slides ---------- */
+  .deck{height:100vh;width:100vw;position:relative}
+  .slide{
+    position:absolute;inset:0;
+    display:none;
+    flex-direction:column;
+    padding:5.5vh 6vw 8vh;
+    animation:fade .45s ease;
+  }
+  .slide.active{display:flex}
+  @keyframes fade{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+
+  .kicker{
+    display:inline-flex;align-items:center;gap:.5rem;
+    font-size:.8rem;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--blue);font-weight:700;margin-bottom:1rem;
+  }
+  .kicker::before{content:"";width:26px;height:2px;background:var(--blue);display:inline-block;border-radius:2px}
+  h1{font-size:clamp(2rem,4.6vw,3.6rem);line-height:1.05;font-weight:800;letter-spacing:-.02em}
+  h2{font-size:clamp(1.5rem,3.1vw,2.5rem);line-height:1.1;font-weight:800;letter-spacing:-.01em;margin-bottom:1.6rem}
+  h2 .accent{color:var(--blue)}
+  .sub{color:var(--muted);font-size:clamp(1rem,1.5vw,1.25rem);margin-top:1rem;max-width:60ch}
+
+  ul{list-style:none;display:flex;flex-direction:column;gap:.9rem;margin-top:.4rem}
+  li{
+    position:relative;padding-left:2rem;font-size:clamp(1rem,1.55vw,1.35rem);
+    line-height:1.4;color:var(--text);
+  }
+  li::before{
+    content:"";position:absolute;left:0;top:.45em;width:.75rem;height:.75rem;
+    border-radius:3px;background:linear-gradient(135deg,var(--blue),var(--cyan));
+    box-shadow:0 0 12px rgba(41,181,232,.6);
+  }
+  li b{color:#fff}
+  li small{display:block;color:var(--muted);font-size:.82em;padding-top:.15rem}
+
+  .land{
+    margin-top:auto;align-self:flex-start;
+    background:linear-gradient(135deg,rgba(41,181,232,.14),rgba(99,230,255,.06));
+    border:1px solid var(--line);border-left:3px solid var(--blue);
+    padding:.85rem 1.2rem;border-radius:12px;color:#dceaff;
+    font-size:clamp(.95rem,1.35vw,1.15rem);max-width:80ch;
+  }
+  .land b{color:var(--cyan)}
+
+  /* ---------- title slide ---------- */
+  .title-wrap{margin:auto 0;display:flex;flex-direction:column;gap:1.2rem}
+  .badge-row{display:flex;gap:.7rem;flex-wrap:wrap;margin-top:1.4rem}
+  .badge{
+    font-size:.85rem;padding:.5rem 1rem;border-radius:999px;
+    border:1px solid var(--line);background:var(--card);color:var(--muted);
+  }
+  .badge.live{color:var(--green);border-color:rgba(61,220,151,.4)}
+
+  /* ---------- flow chart ---------- */
+  .flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin-top:1rem}
+  .node{
+    flex:1;min-width:150px;background:var(--card);border:1px solid var(--line);
+    border-radius:14px;padding:1.1rem 1rem;text-align:center;position:relative;
+    box-shadow:var(--shadow);
+  }
+  .node .ico{font-size:1.6rem;display:block;margin-bottom:.5rem}
+  .node .t{font-weight:800;font-size:1.05rem}
+  .node .d{color:var(--muted);font-size:.85rem;margin-top:.3rem;line-height:1.3}
+  .arrow{display:flex;align-items:center;justify-content:center;padding:0 .3rem;color:var(--blue);font-size:1.6rem}
+  .node.b1{border-top:3px solid var(--blue)}
+  .node.b2{border-top:3px solid var(--cyan)}
+  .node.b3{border-top:3px solid var(--amber)}
+  .node.b4{border-top:3px solid var(--green)}
+  .node.b5{border-top:3px solid #b98cff}
+
+  /* ---------- category grid ---------- */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:.4rem}
+  .cat{
+    background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.1rem 1.2rem;
+    box-shadow:var(--shadow);
+  }
+  .cat h3{font-size:1.1rem;display:flex;align-items:center;gap:.55rem;margin-bottom:.55rem}
+  .cat h3 .dot{width:.7rem;height:.7rem;border-radius:50%;background:var(--blue)}
+  .cat p{color:var(--muted);font-size:.92rem;line-height:1.45}
+  .cat code{color:var(--cyan);font-size:.82rem}
+  .cat.c1 h3 .dot{background:var(--blue)} .cat.c2 h3 .dot{background:var(--cyan)}
+  .cat.c3 h3 .dot{background:var(--amber)} .cat.c4 h3 .dot{background:var(--green)}
+  .cat.c5 h3 .dot{background:#b98cff} .cat.c6 h3 .dot{background:#ff9ecb}
+
+  /* ---------- two column ---------- */
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:2.5rem;align-items:start}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:1.5rem 1.6rem;box-shadow:var(--shadow)}
+  .panel h3{color:var(--blue);font-size:1.15rem;margin-bottom:1rem;letter-spacing:.02em}
+  .vs{display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--muted)}
+
+  .chip{display:inline-block;background:var(--card2);border:1px solid var(--line);border-radius:8px;padding:.3rem .7rem;margin:.2rem;font-size:.85rem;color:var(--cyan);font-family:Consolas,monospace}
+
+  /* ---------- demo steps ---------- */
+  .steps{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:.4rem}
+  .step{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.1rem;position:relative;box-shadow:var(--shadow)}
+  .step .n{position:absolute;top:-14px;left:14px;width:30px;height:30px;border-radius:50%;
+    background:linear-gradient(135deg,var(--blue),var(--cyan));color:#04121f;font-weight:800;
+    display:flex;align-items:center;justify-content:center;font-size:.95rem}
+  .step h4{font-size:1rem;margin:.6rem 0 .4rem}
+  .step p{color:var(--muted);font-size:.85rem;line-height:1.4}
+
+  /* ---------- dashboard mock ---------- */
+  .dash{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin:.4rem 0 1.2rem}
+  .metric{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.2rem;box-shadow:var(--shadow)}
+  .metric .big{font-size:2.2rem;font-weight:800}
+  .metric .lbl{color:var(--muted);font-size:.9rem;margin-top:.2rem}
+  .g{color:var(--green)} .a{color:var(--amber)} .r{color:var(--red)}
+
+  /* ---------- nav ---------- */
+  .nav{position:fixed;bottom:18px;right:26px;display:flex;align-items:center;gap:14px;z-index:20}
+  .nav button{
+    background:var(--card);border:1px solid var(--line);color:var(--text);
+    width:42px;height:42px;border-radius:50%;font-size:1.1rem;cursor:pointer;transition:.2s;
+  }
+  .nav button:hover{background:var(--blue);color:#04121f;border-color:var(--blue)}
+  .counter{color:var(--muted);font-size:.9rem;font-variant-numeric:tabular-nums}
+  .progress{position:fixed;top:0;left:0;height:4px;background:linear-gradient(90deg,var(--blue),var(--cyan));z-index:30;transition:width .35s ease}
+  .brand{position:fixed;bottom:20px;left:26px;color:var(--muted);font-size:.85rem;letter-spacing:.05em;z-index:20;display:flex;align-items:center;gap:.5rem}
+  .brand .sf{width:16px;height:16px;border-radius:50%;background:var(--blue);box-shadow:0 0 12px var(--blue)}
+
+  .hint{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);color:#4d6488;font-size:.78rem;z-index:20}
+  @media (max-width:900px){.grid,.steps,.dash{grid-template-columns:1fr 1fr}.cols{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="deck" id="deck">
+
+  <!-- 1. TITLE -->
+  <section class="slide active">
+    <div class="title-wrap">
+      <span class="kicker">Snowflake · Native Data Quality</span>
+      <h1>Data Quality Monitoring<br><span style="color:var(--blue)">Dashboard &amp; Data Metric Functions</span></h1>
+      <p class="sub">Measure it, judge it, catch the surprises, and see it all in one pane of glass — natively in Snowflake, no external tooling.</p>
+      <div class="badge-row">
+        <span class="badge live">● Public Preview</span>
+        <span class="badge">Enterprise Edition</span>
+        <span class="badge">DMFs · Expectations · Anomaly Detection · Cortex</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. WHY -->
+  <section class="slide">
+    <span class="kicker">The Problem</span>
+    <h2>Bad data is <span class="accent">silent</span> until it's expensive</h2>
+    <ul>
+      <li><b>A number looks wrong</b> on an exec dashboard — nobody knows until a stakeholder points it out.<small>By then bad data has flowed into reports, models, and decisions.</small></li>
+      <li>Same culprits every time — <b>nulls, duplicates, stale tables, negative amounts, orphan records.</b></li>
+      <li>Old way = <b>scattered scripts, cron jobs, orphaned alerts.</b> Reactive, and no single view of health.</li>
+    </ul>
+    <div class="land"><b>The shift:</b> Snowflake now lets us <b>measure</b> quality, <b>define</b> what "good" means, <b>detect</b> the unexpected, and <b>see it all in one dashboard</b> — with alerts and AI on top.</div>
+  </section>
+
+  <!-- 3. THE FLOW -->
+  <section class="slide">
+    <span class="kicker">The Big Picture</span>
+    <h2>Five building blocks, one workflow</h2>
+    <div class="flow">
+      <div class="node b1"><span class="ico">📏</span><span class="t">DMFs</span><span class="d">Measure a quality dimension &amp; return a number</span></div>
+      <div class="arrow">→</div>
+      <div class="node b2"><span class="ico">✅</span><span class="t">Expectations</span><span class="d">Turn the number into pass / fail</span></div>
+      <div class="arrow">→</div>
+      <div class="node b3"><span class="ico">📈</span><span class="t">Anomaly Detection</span><span class="d">Catch what no rule anticipated</span></div>
+      <div class="arrow">→</div>
+      <div class="node b4"><span class="ico">🖥️</span><span class="t">Dashboard</span><span class="d">One pane of glass, account-wide</span></div>
+      <div class="arrow">→</div>
+      <div class="node b5"><span class="ico">🔔</span><span class="t">Notify + AI</span><span class="d">Alert owners · Cortex investigates</span></div>
+    </div>
+    <div class="land">Each block builds on the last — from raw measurement all the way to a managed, alerted, AI-assisted workflow.</div>
+  </section>
+
+  <!-- 4. DMFs foundation -->
+  <section class="slide">
+    <span class="kicker">Part 1 · The Foundation</span>
+    <h2>Data Metric Functions <span class="accent">(DMFs)</span></h2>
+    <ul>
+      <li>A function that <b>measures one quality dimension</b> on a column/table and returns a number — a health probe for your data.</li>
+      <li><b>System DMFs</b> — built-in, zero code, cover ~90% of needs.</li>
+      <li><b>Custom DMFs</b> — SQL functions you write for business rules; behave just like system ones once attached.</li>
+      <li>Attached to the table with <b>one command</b>; runs on a schedule; every result stored over time → a <b>trend</b>, not a snapshot.</li>
+    </ul>
+    <div class="land"><b>Key idea:</b> quality is <b>declared on the object itself</b>, not bolted on from the outside.</div>
+  </section>
+
+  <!-- 5. Categories -->
+  <section class="slide">
+    <span class="kicker">Part 1 · Breadth</span>
+    <h2>System DMFs — covered <span class="accent">out of the box</span></h2>
+    <div class="grid">
+      <div class="cat c1"><h3><span class="dot"></span>Accuracy / Validity</h3><p>Nulls, blanks, whitespace, casing, negatives, future dates, special chars.<br><code>NULL_COUNT · BLANK_COUNT · NEGATIVE_COUNT · FUTURE_TIMESTAMP_COUNT · UNTRIMMED_STRING_COUNT</code></p></div>
+      <div class="cat c2"><h3><span class="dot"></span>Uniqueness</h3><p>Duplicates, distinct counts, allowed value sets.<br><code>DUPLICATE_COUNT · UNIQUE_COUNT · ACCEPTED_VALUES</code></p></div>
+      <div class="cat c3"><h3><span class="dot"></span>Volume</h3><p>Sudden growth or drop in a table.<br><code>ROW_COUNT</code></p></div>
+      <div class="cat c4"><h3><span class="dot"></span>Freshness</h3><p>Time since the table last changed — catch a stalled pipeline.<br><code>FRESHNESS</code></p></div>
+      <div class="cat c5"><h3><span class="dot"></span>Statistics</h3><p>Profile a column, spot distribution drift.<br><code>AVG · MIN · MAX · MEDIAN · STDDEV</code></p></div>
+      <div class="cat c6"><h3><span class="dot"></span>Schema</h3><p>Unexpected structural changes.<br><code>SCHEMA_CHANGE_COUNT</code></p></div>
+    </div>
+    <div class="land">Most real-world data problems are already covered with <b>zero custom code</b>.</div>
+  </section>
+
+  <!-- 6. Custom DMFs + scheduling -->
+  <section class="slide">
+    <span class="kicker">Part 1 · Your Rules</span>
+    <h2>Custom DMFs &amp; <span class="accent">scheduling</span></h2>
+    <div class="cols">
+      <div class="panel">
+        <h3>Custom DMFs = SQL returning a count</h3>
+        <ul style="margin-top:0">
+          <li><b>Referential integrity</b> — orphan orders with no matching customer.</li>
+          <li><b>Range checks</b> — discount outside 0–50%, amount below zero.</li>
+          <li><b>Format checks</b> — email not matching <code>x@y.z</code>.</li>
+        </ul>
+        <p style="color:var(--muted);margin-top:1rem;font-size:.95rem">Anything you can express in a query becomes a monitorable metric — and lives in version control.</p>
+      </div>
+      <div class="panel">
+        <h3>DATA_METRIC_SCHEDULE</h3>
+        <ul style="margin-top:0">
+          <li><b>TRIGGER_ON_CHANGES</b> — evaluate whenever data changes.</li>
+          <li><b>Interval / cron</b> (e.g. 5 or 60 min) — <b>required for anomaly detection</b> (needs a regular time series).</li>
+        </ul>
+        <p style="color:var(--muted);margin-top:1rem;font-size:.95rem">Set cadence per table by how critical &amp; fast-moving the data is.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7. Expectations -->
+  <section class="slide">
+    <span class="kicker">Part 2 · Make it Actionable</span>
+    <h2>Expectations — metric → <span class="accent">pass / fail</span></h2>
+    <ul>
+      <li>A DMF gives a <b>number</b>. An expectation attaches a <b>rule</b> → <code style="color:var(--cyan)">VALUE = 0</code>, <code style="color:var(--cyan)">VALUE &lt;= 3</code>, <code style="color:var(--cyan)">VALUE &gt;= 10</code>.</li>
+      <li>Each has a <b>readable name</b> → a failure reads like a business statement.</li>
+      <li>Those named failures become the <b>incidents</b> you triage in the dashboard.</li>
+    </ul>
+    <div style="margin-top:.4rem">
+      <span class="chip">status: VALUE = 0</span>
+      <span class="chip">no_duplicate_emails: VALUE = 0</span>
+      <span class="chip">min_volume: VALUE &gt;= 10</span>
+      <span class="chip">no_negative_price: VALUE = 0</span>
+      <span class="chip">valid_status: VALUE = 0</span>
+    </div>
+    <div class="land"><b>DMF = measurement. Expectation = judgement.</b> Together → a clear, named signal.</div>
+  </section>
+
+  <!-- 8. Anomaly detection -->
+  <section class="slide">
+    <span class="kicker">Part 3 · The Unknown</span>
+    <h2>Anomaly detection — catch what you <span class="accent">didn't</span> think of</h2>
+    <div class="cols">
+      <div class="panel">
+        <h3>How it works</h3>
+        <ul style="margin-top:0">
+          <li>Enable <code style="color:var(--cyan)">ANOMALY_DETECTION = TRUE</code> on <b>ROW_COUNT</b> &amp; <b>FRESHNESS</b>.</li>
+          <li>Snowflake learns the <b>normal pattern</b> → forecast, bounds, <code>is_anomaly</code> flag.</li>
+          <li>Catches: <b>volume spike/drop</b>, <b>freshness staleness</b>.</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>Automatic Insights</h3>
+        <ul style="margin-top:0">
+          <li>Snowflake auto-monitors your <b>"popular" tables</b> (by query activity).</li>
+          <li><b>Zero DMF setup</b> — volume &amp; freshness watched in the background.</li>
+          <li>Trains on ~2 weeks of activity, then just works.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="land"><b>Expectations = known rules. Anomaly detection = unknown surprises.</b> You need both.</div>
+  </section>
+
+  <!-- 9. Notifications -->
+  <section class="slide">
+    <span class="kicker">Part 4 · Close the Loop</span>
+    <h2>Notifications — <span class="accent">push</span>, don't watch</h2>
+    <ul>
+      <li>Wire DMF results to <b>email</b> or <b>Slack / webhook</b> at the database level.</li>
+      <li><b>cooldown_hours</b> — minimum gap between alerts, so no flooding.</li>
+      <li><b>metadata_included</b> — table, column &amp; DMF name right in the message.</li>
+      <li>Silence a specific noisy DMF while a known issue is being worked.</li>
+    </ul>
+    <div class="land">Monitoring becomes a <b>push system</b> — owners are told the moment a check fails or an anomaly appears, with context to act.</div>
+  </section>
+
+  <!-- 10. Dashboard headline -->
+  <section class="slide">
+    <span class="kicker">Part 5 · The Headline</span>
+    <h2>The new <span class="accent">Data Quality Dashboard</span></h2>
+    <p class="sub" style="margin-top:0;margin-bottom:1.2rem">Snowsight → Monitoring / Governance → Data Quality — where every signal comes together, account-wide.</p>
+    <div class="dash">
+      <div class="metric"><div class="big r">33%</div><div class="lbl">Healthy tables</div></div>
+      <div class="metric"><div class="big a">66%</div><div class="lbl">Monitoring coverage</div></div>
+      <div class="metric"><div class="big">12</div><div class="lbl">Open incidents (rules + anomalies)</div></div>
+    </div>
+    <ul style="gap:.7rem">
+      <li><b>Health at a glance</b> · <b>Unified incident triage</b> (failed expectations + anomalies together)</li>
+      <li><b>Drill-down</b>: account → schema → table → the failing check, with value, rule &amp; history</li>
+      <li><b>Manage monitors</b> from the UI — add/remove schemas &amp; tables, no SQL hunting</li>
+    </ul>
+    <div class="land">One pane of glass for the <b>rules you defined</b> <em>and</em> the <b>anomalies Snowflake found for you</b>.</div>
+  </section>
+
+  <!-- 11. AI investigation -->
+  <section class="slide">
+    <span class="kicker">Part 5 · AI Assist</span>
+    <h2>Investigate with <span class="accent">Cortex</span></h2>
+    <div class="flow" style="margin-top:2rem">
+      <div class="node b1"><span class="ico">🚨</span><span class="t">Failing incident</span><span class="d">Click "Investigate"</span></div>
+      <div class="arrow">→</div>
+      <div class="node b2"><span class="ico">🧠</span><span class="t">Context pre-loaded</span><span class="d">AI reasons about root cause</span></div>
+      <div class="arrow">→</div>
+      <div class="node b3"><span class="ico">🔗</span><span class="t">Lineage traced</span><span class="d">Shows what's downstream &amp; affected</span></div>
+      <div class="arrow">→</div>
+      <div class="node b4"><span class="ico">🛠️</span><span class="t">Fix suggested</span><span class="d">Remediation in minutes</span></div>
+    </div>
+    <div class="land">Select <b>multiple incidents</b> for a <b>correlated</b> analysis across them — triage in minutes, not hours.</div>
+  </section>
+
+  <!-- 12. Demo flow part 1 -->
+  <section class="slide">
+    <span class="kicker">Live Demo · Setup</span>
+    <h2>What I'm showing <span class="accent">(1–4)</span></h2>
+    <div class="steps">
+      <div class="step"><span class="n">1</span><h4>Seed bad data</h4><p>E-commerce set with nulls, dupes, negatives, orphan orders, future dates, invalid status.</p></div>
+      <div class="step"><span class="n">2</span><h4>Attach DMFs</h4><p>System DMFs across every category + custom rules — no monitoring job, just <em>declare</em>.</p></div>
+      <div class="step"><span class="n">3</span><h4>Define expectations</h4><p>Named pass/fail rules — status never null, no dupe emails, no negative prices.</p></div>
+      <div class="step"><span class="n">4</span><h4>Enable anomaly detection</h4><p>On row count &amp; freshness; simulate a 10x volume spike and a week-stale table.</p></div>
+    </div>
+    <div class="land">"I never wrote a monitoring job — I just <b>declared what to measure</b>, and let Snowflake find the problems."</div>
+  </section>
+
+  <!-- 13. Demo flow part 2 -->
+  <section class="slide">
+    <span class="kicker">Live Demo · Payoff</span>
+    <h2>What I'm showing <span class="accent">(5–8)</span></h2>
+    <div class="steps">
+      <div class="step"><span class="n">5</span><h4>Preview instantly</h4><p>Call DMFs directly + <code>SYSTEM$EVALUATE_DATA_QUALITY_EXPECTATIONS</code> — see pass/fail now.</p></div>
+      <div class="step"><span class="n">6</span><h4>Open the dashboard</h4><p>Health cards, incident list, filter to schema, drill into <em>no_duplicate_emails</em>.</p></div>
+      <div class="step"><span class="n">7</span><h4>Investigate with AI</h4><p>Cortex finds the shared duplicate email, traces downstream views, proposes a fix.</p></div>
+      <div class="step"><span class="n">8</span><h4>Alert the owner</h4><p>DB-level email with cooldown — table, column &amp; metric already in the message.</p></div>
+    </div>
+    <div class="land">Measured → judged → caught surprises → saw it all → investigated → alerted. <b>All native to Snowflake.</b></div>
+  </section>
+
+  <!-- 14. Takeaways -->
+  <section class="slide">
+    <span class="kicker">Wrap-up</span>
+    <h2>Key <span class="accent">takeaways</span></h2>
+    <ul>
+      <li><b>DMFs</b> — reusable, scheduled health checks; system for common cases, custom for business rules.</li>
+      <li><b>Expectations</b> — turn metrics into named pass/fail signals → incidents.</li>
+      <li><b>Anomaly detection</b> — covers the surprises; needs a schedule (auto on popular tables).</li>
+      <li><b>Dashboard</b> — single pane of glass: health, triage, drill-down, AI investigation.</li>
+      <li><b>Notifications</b> — push the signal to the right people; proactive, not manual.</li>
+    </ul>
+  </section>
+
+  <!-- 15. Closing -->
+  <section class="slide">
+    <div class="title-wrap" style="align-items:flex-start">
+      <span class="kicker">Start here</span>
+      <h1>Pick one critical table.<br><span style="color:var(--blue)">Two or three DMFs. Add expectations.</span><br>Let the dashboard &amp; alerts do the rest.</h1>
+      <p class="sub">Quality stops being a firefight and becomes a managed, visible, native part of the platform.</p>
+      <div class="badge-row"><span class="badge live">● Try it today on Enterprise Edition</span></div>
+    </div>
+  </section>
+
+</div>
+
+<!-- chrome -->
+<div class="brand"><span class="sf"></span> Snowflake Data Quality</div>
+<div class="hint">← → or Space to navigate · F for fullscreen</div>
+<div class="nav">
+  <button id="prev" aria-label="Previous">‹</button>
+  <span class="counter"><span id="cur">1</span> / <span id="total">15</span></span>
+  <button id="next" aria-label="Next">›</button>
+</div>
+
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  let i=0;
+  const cur=document.getElementById('cur');
+  const total=document.getElementById('total');
+  const progress=document.getElementById('progress');
+  total.textContent=slides.length;
+  function show(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach((s,k)=>s.classList.toggle('active',k===i));
+    cur.textContent=i+1;
+    progress.style.width=((i+1)/slides.length*100)+'%';
+  }
+  document.getElementById('next').onclick=()=>show(i+1);
+  document.getElementById('prev').onclick=()=>show(i-1);
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();show(i+1);}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();show(i-1);}
+    else if(e.key==='Home'){show(0);}
+    else if(e.key==='End'){show(slides.length-1);}
+    else if(e.key==='f'||e.key==='F'){document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();}
+  });
+  show(0);
+</script>
+</body>
+</html>
